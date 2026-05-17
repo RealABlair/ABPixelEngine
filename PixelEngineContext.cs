@@ -25,6 +25,8 @@ namespace ABSoftware.ABPixelEngine
 
         public Input Input { get; private set; }
 
+        public bool EnablePixelFiltering = false;
+
         public PixelEngineContext() : this(0.02f) { }
 
         public PixelEngineContext(float fixedUpdateDelta)
@@ -193,6 +195,12 @@ namespace ABSoftware.ABPixelEngine
                         Input.SetScroll(arg);
                     }
                     break;
+                case Native.WM.SYSCOMMAND: //Disable ALT
+                    {
+                        if((wParam.ToInt32() & 0xFFF0) == Native.SC_KEYMENU)
+                            return IntPtr.Zero;
+                    }
+                    break;
             }
 
             return Native.DefWindowProc(hWnd, msg, wParam, lParam);
@@ -205,7 +213,22 @@ namespace ABSoftware.ABPixelEngine
 
         public void Draw(int x, int y, Pixel color)
         {
-            renderBuffer.SetPixel(x, y, color);
+            if(!EnablePixelFiltering)
+                renderBuffer.SetPixel(x, y, color);
+            else
+            {
+                renderBuffer.SetPixel(x, y, FiterPixel(color, renderBuffer.GetPixel(x, y)));
+            }
+        }
+
+        public void DrawUnsafe(int index, Pixel color)
+        {
+            if(!EnablePixelFiltering)
+                renderBuffer.Pixels[index] = color;
+            else
+            {
+                renderBuffer.Pixels[index] = FiterPixel(color, renderBuffer.Pixels[index]);
+            }
         }
 
         public Pixel GetPixel(int x, int y)
@@ -228,7 +251,7 @@ namespace ABSoftware.ABPixelEngine
 
                 for(int j = x0; j < x1; j++)
                 {
-                    renderBuffer.Pixels[r + j] = color;
+                    DrawUnsafe(r + j, color);
                 }
             }
         }
@@ -295,7 +318,7 @@ namespace ABSoftware.ABPixelEngine
 
             while (true)
             {
-                FillCirlce(x0, y0, radius, color);
+                FillCircle(x0, y0, radius, color);
 
                 if (x0 == x1 && y0 == y1)
                     break;
@@ -314,7 +337,43 @@ namespace ABSoftware.ABPixelEngine
             }
         }
 
-        public void FillCirlce(int x, int y, int radius, Pixel color)
+        public void DrawCircle(int x, int y, int radius, Pixel color)
+        {
+            if (radius <= 0)
+            {
+                Draw(x, y, color);
+                return;
+            }
+
+            int xx = 0;
+            int yy = radius;
+            int d = 3 - 2 * radius;
+
+            while (xx <= yy)
+            {
+                Draw(x + xx, y + yy, color);
+                Draw(x - xx, y + yy, color);
+                Draw(x + xx, y - yy, color);
+                Draw(x - xx, y - yy, color);
+                Draw(x + yy, y + xx, color);
+                Draw(x - yy, y + xx, color);
+                Draw(x + yy, y - xx, color);
+                Draw(x - yy, y - xx, color);
+
+                if (d < 0)
+                {
+                    d += 4 * xx + 6;
+                }
+                else
+                {
+                    d += 4 * (xx - yy) + 10;
+                    yy--;
+                }
+                xx++;
+            }
+        }
+
+        public void FillCircle(int x, int y, int radius, Pixel color)
         {
             if(radius <= 0)
             {
@@ -377,7 +436,7 @@ namespace ABSoftware.ABPixelEngine
                 int rowOffset = y * RenderableWidth;
                 for (int x = xStart; x < xEnd; x++)
                 {
-                    renderBuffer.Pixels[rowOffset + x] = color;
+                    DrawUnsafe(rowOffset + x, color);
                 }
             }
         }
@@ -517,7 +576,7 @@ namespace ABSoftware.ABPixelEngine
                 int index = rowOffset + x;
                 if (index >= 0 && index < maxIndex)
                 {
-                    renderBuffer.Pixels[index] = color;
+                    DrawUnsafe(index, color);
                 }
             }
         }
@@ -528,5 +587,6 @@ namespace ABSoftware.ABPixelEngine
         /// <returns>Returns a flag if the engine should keep itself active or not</returns>
         public virtual bool OnUpdate() { return true; }
         public virtual void OnStop() { }
+        public virtual Pixel FiterPixel(Pixel newPixel, Pixel prevPixel) { return Colors.Transparent; }
     }
 }

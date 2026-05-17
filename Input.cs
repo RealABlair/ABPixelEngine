@@ -5,6 +5,7 @@ namespace ABSoftware.ABPixelEngine
     public class Input
     {
         KeyState[] keyStates = new KeyState[256];
+        bool[] newKeyStates = new bool[256];
         KeyState scroll = new KeyState();
         public int WindowMouseX { get; private set; }
         public int WindowMouseY { get; private set; }
@@ -34,6 +35,8 @@ namespace ABSoftware.ABPixelEngine
             for(int i = 0; i < 256; i++)
             {
                 keyStates[i].previous = keyStates[i].current;
+
+                keyStates[i].current = newKeyStates[i];
             }
             mwheelUp = false;
             mwheelDown = false;
@@ -41,7 +44,7 @@ namespace ABSoftware.ABPixelEngine
 
         public void SetState(Key key, bool state)
         {
-            keyStates[(byte)key].current = state;
+            newKeyStates[(byte)key] = state;
         }
 
         public void SetScroll(int scroll)

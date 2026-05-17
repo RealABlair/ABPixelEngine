@@ -148,6 +148,8 @@ namespace ABSoftware.ABPixelEngine
         public const uint SWP_NOZORDER = 0x0004;
         public const uint SWP_NOACTIVATE = 0x0010;
 
+        public const uint SC_KEYMENU = 0xF100;
+
         public const uint WM_ACTIVATE = 0x0006;
         public const int WA_INACTIVE = 0;
 
@@ -180,7 +182,7 @@ namespace ABSoftware.ABPixelEngine
             public int cbSize;
             [MarshalAs(UnmanagedType.U4)]
             public int style;
-            public WndProcDelegate lpfnWndProc;
+            public WndProcDelegate lpfnWndProc; // not WndProc
             public int cbClsExtra;
             public int cbWndExtra;
             public IntPtr hInstance;
@@ -334,7 +336,7 @@ namespace ABSoftware.ABPixelEngine
             WS_CLIPSIBLINGS = 0x04000000,
             WS_CLIPCHILDREN = 0x02000000,
             WS_MAXIMIZE = 0x01000000,
-            WS_CAPTION = 0x00C00000,    /* WS_BORDER | WS_DLGFRAME */
+            WS_CAPTION = 0x00C00000,
             WS_BORDER = 0x00800000,
             WS_DLGFRAME = 0x00400000,
             WS_VSCROLL = 0x00200000,
