@@ -180,7 +180,7 @@ namespace ABSoftware.ABPixelEngine
             public int cbSize;
             [MarshalAs(UnmanagedType.U4)]
             public int style;
-            public WndProcDelegate lpfnWndProc; // not WndProc
+            public WndProcDelegate lpfnWndProc;
             public int cbClsExtra;
             public int cbWndExtra;
             public IntPtr hInstance;
@@ -347,7 +347,6 @@ namespace ABSoftware.ABPixelEngine
             WS_MINIMIZEBOX = 0x00020000,
             WS_MAXIMIZEBOX = 0x00010000,
 
-            // Самый частый стиль для обычных окон:
             WS_OVERLAPPEDWINDOW = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU |
                                   WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX
         }
