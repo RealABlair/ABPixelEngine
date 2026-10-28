@@ -1,4 +1,9 @@
-﻿using System;
+﻿using ABSoftware.ABPixelEngine.Renderers;
+using ABSoftware.ABPixelEngine.Sprites;
+using ABSoftware.ABPixelEngine.Structures;
+using ABSoftware.ABPixelEngine.TextRendering;
+using System;
+using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace ABSoftware.ABPixelEngine
@@ -25,7 +30,9 @@ namespace ABSoftware.ABPixelEngine
 
         public Input Input { get; private set; }
 
-        public bool EnablePixelFiltering = false;
+        public PixelMode DrawMode { get; private set; }
+        private ABDictionary<PixelMode, IRenderer> renderers;
+        private IRenderer currentRenderer;
 
         public PixelEngineContext() : this(0.02f) { }
 
@@ -33,6 +40,18 @@ namespace ABSoftware.ABPixelEngine
         {
             lastUpdateTime = EngineTime.Now;
             fixedDeltaTime = fixedUpdateDelta;
+
+            DrawMode = PixelMode.Direct;
+
+            renderers = new ABDictionary<PixelMode, IRenderer>()
+            {
+                { PixelMode.Direct, new DirectRenderer() },
+                { PixelMode.Alpha, new AlphaRenderer() },
+                { PixelMode.Filter, new FilterRenderer() },
+                { PixelMode.AlphaFilter, new AlphaFilterRenderer() }
+            };
+
+            currentRenderer = renderers[DrawMode];
         }
 
         public void Initialize(int width, int height)
@@ -77,17 +96,21 @@ namespace ABSoftware.ABPixelEngine
 
         void MainLoop()
         {
+            pixelFilter = defaultPixelFilter;
             Input = new Input();
 
             CreateContext();
             InitOpenGL(renderBuffer);
 
+            foreach (var renderer in renderers)
+            {
+                renderer.Value.Initialize(renderBuffer);
+            }
+
             if (!OnStart())
             {
                 Stop();
             }
-
-            this.engineStartTime = EngineTime.Now;
 
             while(IsActive)
             {
@@ -124,8 +147,7 @@ namespace ABSoftware.ABPixelEngine
                     UploadRenderBuffer(renderBuffer);
                     renderAccumulator %= TargetFramerate;
                 }
-
-                Thread.Yield();
+                
             }
 
             DestroyOpenGL();
@@ -141,6 +163,10 @@ namespace ABSoftware.ABPixelEngine
         {
             ResizeWindow(width, height, pixelWidth, pixelHeight);
             UpdateBuffer(ref renderBuffer);
+            foreach (var renderer in renderers)
+            {
+                renderer.Value.Initialize(renderBuffer);
+            }
         }
 
         IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
@@ -185,7 +211,7 @@ namespace ABSoftware.ABPixelEngine
                         short low = (short)(arg & 0xFFFF);
                         short high = (short)(arg >> 16 & 0xFFFF);
 
-                        Input.SetMouse(Mathf.Clamp(low, 0, Width - 1), Mathf.Clamp(high, 0, Height - 1), Mathf.Clamp(low / PixelWidth, 0, RenderableWidth - 1), Mathf.Clamp(high / PixelHeight, 0, RenderableHeight - 1));
+                        Input.SetMouse(low, high, low / PixelWidth, high / PixelWidth);
                     }
                     break;
                 case Native.WM.MOUSEWHEEL:
@@ -201,6 +227,17 @@ namespace ABSoftware.ABPixelEngine
                             return IntPtr.Zero;
                     }
                     break;
+                case Native.WM.KILLFOCUS:
+                    {
+                        Input.KillStates();
+                    }
+                    break;
+                case Native.WM.LBUTTONDOWN: Input.SetState(Key.LButton, true); break;
+                case Native.WM.LBUTTONUP: Input.SetState(Key.LButton, false); break;
+                case Native.WM.RBUTTONDOWN: Input.SetState(Key.RButton, true); break;
+                case Native.WM.RBUTTONUP: Input.SetState(Key.RButton, false); break;
+                case Native.WM.MBUTTONDOWN: Input.SetState(Key.MButton, true); break;
+                case Native.WM.MBUTTONUP: Input.SetState(Key.MButton, false); break;
             }
 
             return Native.DefWindowProc(hWnd, msg, wParam, lParam);
@@ -209,26 +246,24 @@ namespace ABSoftware.ABPixelEngine
         public void Clear(Pixel color)
         {
             renderBuffer.Clear(color);
+            currentRenderer = renderers[DrawMode];
         }
 
         public void Draw(int x, int y, Pixel color)
         {
-            if(!EnablePixelFiltering)
-                renderBuffer.SetPixel(x, y, color);
-            else
-            {
-                renderBuffer.SetPixel(x, y, FiterPixel(color, renderBuffer.GetPixel(x, y)));
-            }
+            currentRenderer.Draw(x, y, color);
         }
 
         public void DrawUnsafe(int index, Pixel color)
         {
-            if(!EnablePixelFiltering)
-                renderBuffer.Pixels[index] = color;
-            else
-            {
-                renderBuffer.Pixels[index] = FiterPixel(color, renderBuffer.Pixels[index]);
-            }
+            currentRenderer.DrawUnsafe(index, color);
+        }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void UpdateRenderState(PixelMode state)
+        {
+            this.DrawMode = state;
+            this.currentRenderer = this.renderers[state];
         }
 
         public Pixel GetPixel(int x, int y)
@@ -238,348 +273,140 @@ namespace ABSoftware.ABPixelEngine
 
         public void FillRectangle(int x, int y, int width, int height, Pixel color)
         {
-            int x0 = Mathf.Max(0, x);
-            int y0 = Mathf.Max(0, y);
-            int x1 = Mathf.Min(RenderableWidth, x + width);
-            int y1 = Mathf.Min(RenderableHeight, y + height);
-
-            if (x0 >= x1 || y0 >= y1) return;
-
-            for(int i = y0; i < y1; i++)
-            {
-                int r = i * RenderableWidth;
-
-                for(int j = x0; j < x1; j++)
-                {
-                    DrawUnsafe(r + j, color);
-                }
-            }
+            currentRenderer.FillRectangle(x, y, width, height, color);
         }
 
         public void DrawRectangle(int x, int y, int width, int height, Pixel color)
         {
-            if (width <= 0 || height <= 0)
-                return;
-
-            int ex = x + width - 1;
-            int ey = y + height - 1;
-
-            for(int i = x; i <= ex; i++)
-            {
-                Draw(i, y, color);
-                Draw(i, ey, color);
-            }
-
-            for (int i = y+1; i < ey; i++)
-            {
-                Draw(x, i, color);
-                Draw(ex, i, color);
-            }
+            currentRenderer.DrawRectangle(x, y, width, height, color);
         }
 
         public void DrawLine(int x0, int y0, int x1, int y1, Pixel color)
         {
-            int dx = Mathf.Abs(x1 - x0);
-            int dy = Mathf.Abs(y1 - y0);
-            int sx = x0 < x1 ? 1 : -1;
-            int sy = y0 < y1 ? 1 : -1;
-            int err = dx - dy;
-
-            while(true)
-            {
-                Draw(x0, y0, color);
-
-                if (x0 == x1 && y0 == y1)
-                    break;
-
-                int e2 = 2 * err;
-                if(e2 > -dy)
-                {
-                    err -= dy;
-                    x0 += sx;
-                }
-                else
-                {
-                    err += dx;
-                    y0 += sy;
-                }
-            }
+            currentRenderer.DrawLine(x0, y0, x1, y1, color);
         }
 
         public void DrawLine(int x0, int y0, int x1, int y1, int thickness, Pixel color)
         {
-            int dx = Mathf.Abs(x1 - x0);
-            int dy = Mathf.Abs(y1 - y0);
-            int sx = x0 < x1 ? 1 : -1;
-            int sy = y0 < y1 ? 1 : -1;
-            int err = dx - dy;
-
-            int radius = (int)(thickness / 2f);
-
-            while (true)
-            {
-                FillCircle(x0, y0, radius, color);
-
-                if (x0 == x1 && y0 == y1)
-                    break;
-
-                int e2 = 2 * err;
-                if (e2 > -dy)
-                {
-                    err -= dy;
-                    x0 += sx;
-                }
-                else
-                {
-                    err += dx;
-                    y0 += sy;
-                }
-            }
+            currentRenderer.DrawLine(x0, y0, x1, y1, thickness, color);
         }
 
         public void DrawCircle(int x, int y, int radius, Pixel color)
         {
-            if (radius <= 0)
-            {
-                Draw(x, y, color);
-                return;
-            }
-
-            int xx = 0;
-            int yy = radius;
-            int d = 3 - 2 * radius;
-
-            while (xx <= yy)
-            {
-                Draw(x + xx, y + yy, color);
-                Draw(x - xx, y + yy, color);
-                Draw(x + xx, y - yy, color);
-                Draw(x - xx, y - yy, color);
-                Draw(x + yy, y + xx, color);
-                Draw(x - yy, y + xx, color);
-                Draw(x + yy, y - xx, color);
-                Draw(x - yy, y - xx, color);
-
-                if (d < 0)
-                {
-                    d += 4 * xx + 6;
-                }
-                else
-                {
-                    d += 4 * (xx - yy) + 10;
-                    yy--;
-                }
-                xx++;
-            }
+            currentRenderer.DrawCircle(x, y, radius, color);
         }
 
         public void FillCircle(int x, int y, int radius, Pixel color)
         {
-            if(radius <= 0)
-            {
-                Draw(x, y, color);
-                return;
-            }
-
-            for(int yy = -radius; yy <= radius; yy++)
-            {
-                for (int xx = -radius; xx <= radius; xx++)
-                {
-                    if (xx * xx + yy * yy <= radius * radius)
-                        Draw(x + xx, y + yy, color);
-                }
-            }
+            currentRenderer.FillCircle(x, y, radius, color);
         }
 
         public void DrawTriangle(int x0, int y0, int x1, int y1, int x2, int y2, Pixel color)
         {
-            DrawLine(x0, y0, x1, y1, color);
-            DrawLine(x1, y1, x2, y2, color);
-            DrawLine(x2, y2, x0, y0, color);
+            currentRenderer.DrawTriangle(x0, y0, x1, y1, x2, y2, color);
         }
 
         public void FillTriangle(int x0, int y0, int x1, int y1, int x2, int y2, Pixel color)
         {
-            if (y0 > y1) { (x0, x1) = (x1, x0); (y0, y1) = (y1, y0); }
-            if (y0 > y2) { (x0, x2) = (x2, x0); (y0, y2) = (y2, y0); }
-            if (y1 > y2) { (x1, x2) = (x2, x1); (y1, y2) = (y2, y1); }
+            currentRenderer.FillTriangle(x0, y0, x1, y1, x2, y2, color);
+        }
 
-            int totalHeight = y2 - y0;
-            if (totalHeight == 0) return;
+        public void FillTexturedTriangle(int x0, int y0, float u0, float v0, int x1, int y1, float u1, float v1, int x2, int y2, float u2, float v2, Bitmap texture)
+        {
+            currentRenderer.FillTexturedTriangle(x0, y0, u0, v0, x1, y1, u1, v1, x2, y2, u2, v2, texture);
+        }
 
-            for (int y = y0; y <= y2; y++)
-            {
-                if (y < 0) continue;
-                if (y >= RenderableHeight) break;
-
-                bool isSecondHalf = y > y1 || y0 == y1;
-                int segmentHeight = isSecondHalf ? (y2 - y1) : (y1 - y0);
-
-                if (segmentHeight == 0) continue;
-
-                float alpha = (float)(y - y0) / totalHeight;
-                float beta = (float)(y - (isSecondHalf ? y1 : y0)) / segmentHeight;
-
-                int xa = x0 + (int)((x2 - x0) * alpha);
-
-                int xb = isSecondHalf
-                    ? x1 + (int)((x2 - x1) * beta)
-                    : x0 + (int)((x1 - x0) * beta);
-
-                if (xa > xb) (xa, xb) = (xb, xa);
-
-                int xStart = Mathf.Max(0, xa);
-                int xEnd = Mathf.Min(RenderableWidth, xb + 1);
-
-                if (xStart >= xEnd) continue;
-
-                int rowOffset = y * RenderableWidth;
-                for (int x = xStart; x < xEnd; x++)
-                {
-                    DrawUnsafe(rowOffset + x, color);
-                }
-            }
+        public void FillTexturedTriangle(int x0, int y0, float u0, float v0, int x1, int y1, float u1, float v1, int x2, int y2, float u2, float v2, Bitmap texture, Pixel color)
+        {
+            currentRenderer.FillTexturedTriangle(x0, y0, u0, v0, x1, y1, u1, v1, x2, y2, u2, v2, texture, color);
         }
 
         public void DrawEllipse(int xc, int yc, int rx, int ry, Pixel color)
         {
-            if (rx <= 0 || ry <= 0) return;
-
-            int x = 0;
-            int y = ry;
-
-            long rx2 = (long)rx * rx;
-            long ry2 = (long)ry * ry;
-            long fx2 = 2 * ry2;
-            long fy2 = 2 * rx2;
-
-            long p = (long)(ry2 - rx2 * ry + 0.25 * rx2);
-            long dx = 0;
-            long dy = fy2 * y;
-
-            while (dx < dy)
-            {
-                Draw(xc + x, yc + y, color);
-                Draw(xc - x, yc + y, color);
-                Draw(xc + x, yc - y, color);
-                Draw(xc - x, yc - y, color);
-
-                x++;
-                dx += fx2;
-                if (p < 0)
-                {
-                    p += ry2 + dx;
-                }
-                else
-                {
-                    y--;
-                    dy -= fy2;
-                    p += ry2 + dx - dy;
-                }
-            }
-
-            p = (long)(ry2 * (x + 0.5) * (x + 0.5) + rx2 * (y - 1) * (y - 1) - rx2 * ry2);
-
-            while (y >= 0)
-            {
-                Draw(xc + x, yc + y, color);
-                Draw(xc - x, yc + y, color);
-                Draw(xc + x, yc - y, color);
-                Draw(xc - x, yc - y, color);
-
-                y--;
-                dy -= fy2;
-                if (p > 0)
-                {
-                    p += rx2 - dy;
-                }
-                else
-                {
-                    x++;
-                    dx += fx2;
-                    p += rx2 + dx - dy;
-                }
-            }
+            currentRenderer.DrawEllipse(xc, yc, rx, ry, color);
         }
 
         public void FillEllipse(int xc, int yc, int rx, int ry, Pixel color)
         {
-            if (rx <= 0 || ry <= 0) return;
-
-            int x = 0;
-            int y = ry;
-
-            long rx2 = (long)rx * rx;
-            long ry2 = (long)ry * ry;
-            long fx2 = 2 * ry2;
-            long fy2 = 2 * rx2;
-
-            long p = ry2 - (rx2 * ry) + (rx2 / 4);
-            long dx = 0;
-            long dy = fy2 * y;
-
-            while (dx < dy)
-            {
-                DrawHorizontalLine(xc - x, xc + x, yc + y, color);
-                DrawHorizontalLine(xc - x, xc + x, yc - y, color);
-
-                x++;
-                dx += fx2;
-                if (p < 0)
-                {
-                    p += ry2 + dx;
-                }
-                else
-                {
-                    y--;
-                    dy -= fy2;
-                    p += ry2 + dx - dy;
-                }
-            }
-
-            p = (long)(ry2 * (x + 0.5) * (x + 0.5) + rx2 * (y - 1) * (y - 1) - rx2 * ry2);
-
-            while (y >= 0)
-            {
-                DrawHorizontalLine(xc - x, xc + x, yc + y, color);
-                DrawHorizontalLine(xc - x, xc + x, yc - y, color);
-
-                y--;
-                dy -= fy2;
-                if (p > 0)
-                {
-                    p += rx2 - dy;
-                }
-                else
-                {
-                    x++;
-                    dx += fx2;
-                    p += rx2 + dx - dy;
-                }
-            }
+            currentRenderer.FillEllipse(xc, yc, rx, ry, color);
         }
 
-        private void DrawHorizontalLine(int xStart, int xEnd, int y, Pixel color)
+        public void DrawPolygon(int x0, int y0, int x1, int y1, int x2, int y2, int x3, int y3, bool useTriangles, Pixel color)
         {
-            if (y < 0 || y >= RenderableHeight) return;
+            currentRenderer.DrawPolygon(x0, y0, x1, y1, x2, y2, x3, y3, useTriangles, color);
+        }
 
-            int x0 = Mathf.Max(0, xStart);
-            int x1 = Mathf.Min(RenderableWidth - 1, xEnd);
+        public void FillPolygon(int x0, int y0, int x1, int y1, int x2, int y2, int x3, int y3, Pixel color)
+        {
+            currentRenderer.FillPolygon(x0, y0, x1, y1, x2, y2, x3, y3, color);
+        }
 
-            if (x0 > x1) return;
+        public void DrawString(int x, int y, string text, Font font, Pixel color)
+        {
+            currentRenderer.DrawString(x, y, text, font, color);
+        }
 
-            int rowOffset = y * RenderableWidth;
-            int maxIndex = renderBuffer.Pixels.Length;
+        public void DrawString(int x, int y, string text, Font font, Pixel color, int scaleX, int scaleY)
+        {
+            currentRenderer.DrawString(x, y, text, font, color, scaleX, scaleY);
+        }
 
-            for (int x = x0; x <= x1; x++)
+        public void DrawStringBox(int x, int y, int width, int height, string text, Font font, Pixel color)
+        {
+            currentRenderer.DrawStringBox(x, y, width, height, text, font, color);
+        }
+
+        public void DrawStringBox(int x, int y, int width, int height, string text, Font font, Pixel color, int scaleX, int scaleY)
+        {
+            currentRenderer.DrawStringBox(x, y, width, height, text, font, color, scaleX, scaleY);
+        }
+
+        #region int2 extensions
+        public void Draw(int2 position, Pixel color) => Draw(position.x, position.y, color);
+        public void FillRectangle(int2 position, int2 size, Pixel color) => FillRectangle(position.x, position.y, size.x, size.y, color);
+        public void DrawRectangle(int2 position, int2 size, Pixel color) => DrawRectangle(position.x, position.y, size.x, size.y, color);
+        public void DrawLine(int2 position1, int2 position2, Pixel color) => DrawLine(position1.x, position1.y, position2.x, position2.y, color);
+        public void DrawLine(int2 position1, int2 position2, int thickness, Pixel color) => DrawLine(position1.x, position1.y, position2.x, position2.y, thickness, color);
+        public void DrawCircle(int2 position, int radius, Pixel color) => DrawCircle(position.x, position.y, radius, color);
+        public void FillCircle(int2 position, int radius, Pixel color) => FillCircle(position.x, position.y, radius, color);
+        public void DrawTriangle(int2 position1, int2 position2, int2 position3, Pixel color) => DrawTriangle(position1.x, position1.y, position2.x, position2.y, position3.x, position3.y, color);
+        public void FillTriangle(int2 position1, int2 position2, int2 position3, Pixel color) => FillTriangle(position1.x, position1.y, position2.x, position2.y, position3.x, position3.y, color);
+        public void DrawEllipse(int2 position, int2 size, Pixel color) => DrawEllipse(position.x, position.y, size.x, size.y, color);
+        public void FillEllipse(int2 position, int2 size, Pixel color) => FillEllipse(position.x, position.y, size.x, size.y, color);
+        public void DrawPolygon(int2 position1, int2 position2, int2 position3, int2 position4, bool useTriangles, Pixel color) => DrawPolygon(position1.x, position1.y, position2.x, position2.y, position3.x, position3.y, position4.x, position4.y, useTriangles, color);
+        public void FillPolygon(int2 position1, int2 position2, int2 position3, int2 position4, Pixel color) => FillPolygon(position1.x, position1.y, position2.x, position2.y, position3.x, position3.y, position4.x, position4.y, color);
+        #endregion
+
+        #region Filtering
+        DefaultFilter defaultPixelFilter = new DefaultFilter();
+        IPixelFilter pixelFilter;
+
+        public void EnablePixelFilter(IPixelFilter filter)
+        {
+            pixelFilter = filter;
+            foreach(var renderer in renderers)
             {
-                int index = rowOffset + x;
-                if (index >= 0 && index < maxIndex)
-                {
-                    DrawUnsafe(index, color);
-                }
+                renderer.Value.PassPixelFilter(pixelFilter);
             }
         }
+
+        public void DisablePixelFilter()
+        {
+            pixelFilter = defaultPixelFilter;
+            foreach (var renderer in renderers)
+            {
+                renderer.Value.PassPixelFilter(pixelFilter);
+            }
+        }
+
+        struct DefaultFilter : IPixelFilter
+        {
+            public Pixel Filter(int x, int y, Pixel newPixel, Pixel prevPixel)
+            {
+                return newPixel;
+            }
+        }
+        #endregion
 
         /// <returns>Returns a flag if the engine should keep itself active or not</returns>
         public virtual bool OnStart() { return true; }
@@ -587,6 +414,13 @@ namespace ABSoftware.ABPixelEngine
         /// <returns>Returns a flag if the engine should keep itself active or not</returns>
         public virtual bool OnUpdate() { return true; }
         public virtual void OnStop() { }
-        public virtual Pixel FiterPixel(Pixel newPixel, Pixel prevPixel) { return Colors.Transparent; }
+
+        public enum PixelMode
+        {
+            Direct = 1,
+            Alpha = 2,
+            Filter = 4,
+            AlphaFilter = Alpha | Filter
+        }
     }
 }

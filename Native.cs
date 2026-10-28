@@ -73,6 +73,8 @@ namespace ABSoftware.ABPixelEngine
         public static extern void glColor3f(float r, float g, float b);
         [DllImport(opengl32)]
         public static extern void glViewport(int x, int y, int width, int height);
+        [DllImport(opengl32, CharSet = CharSet.Ansi, ExactSpelling = true)]
+        public static extern IntPtr wglGetProcAddress(string lpszProc);
         #endregion
 
         #region kernel32

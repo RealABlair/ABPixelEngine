@@ -7,6 +7,9 @@ namespace ABSoftware.ABPixelEngine
 {
     public class Display
     {
+        private delegate bool wglSwapIntervalEXTDelegate(int interval);
+        private wglSwapIntervalEXTDelegate wglSwapIntervalEXT;
+
         WndProcDelegate wndProcInstance;
 
         public IntPtr hWnd { get; private set; }
@@ -101,6 +104,17 @@ namespace ABSoftware.ABPixelEngine
             {
                 throw new Exception("OpenGL context creation error");
             }
+
+            IntPtr procAddress = wglGetProcAddress("wglSwapIntervalEXT");
+            if (procAddress != IntPtr.Zero)
+            {
+                wglSwapIntervalEXT = Marshal.GetDelegateForFunctionPointer<wglSwapIntervalEXTDelegate>(procAddress);
+            }
+        }
+
+        public void SetVSync(bool state)
+        {
+            wglSwapIntervalEXT?.Invoke(state ? 1 : 0);
         }
 
         public void InitOpenGL(RenderBuffer renderBuffer)

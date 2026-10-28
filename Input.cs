@@ -63,6 +63,14 @@ namespace ABSoftware.ABPixelEngine
             this.MouseY = y;
         }
 
+        public void KillStates()
+        {
+            for(int i = 0; i < 256; i++)
+            {
+                newKeyStates[i] = false;
+            }
+        }
+
         public bool GetKey(Key key) => keyStates[(byte)key].isHeld;
         public bool GetKeyDown(Key key) => keyStates[(byte)key].isDown;
         public bool GetKeyUp(Key key) => keyStates[(byte)key].isUp;

@@ -59,6 +59,29 @@ namespace ABSoftware.ABPixelEngine
             return value;
         }
 
+        public static float RoundToNew(float min, float max, float value)
+        {
+            float range = max - min;
+
+            float val = (value - min) % range;
+
+            if (val < 0)
+                val += range;
+
+            return min + val;
+        }
+
+        public static float RoundToNew01(float value)
+        {
+            float val = value % 1f;
+
+            if (val < 0)
+                val += 1f;
+
+            return val;
+        }
+
+        #region ints
         public static int Abs(int x)
         {
             if (x < 0)
@@ -90,7 +113,9 @@ namespace ABSoftware.ABPixelEngine
 
             return value;
         }
+        #endregion
 
         public static float Lerp(float start, float end, float t) => start + (end - start) * t;
+        public static float InvLerp(float start, float end, float val) => (val - start) / (end - start);
     }
 }
