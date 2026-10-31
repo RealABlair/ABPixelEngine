@@ -11,9 +11,13 @@ namespace ABSoftware.ABPixelEngine
         public int WindowMouseY { get; private set; }
         public int MouseX { get; private set; }
         public int MouseY { get; private set; }
+        public int MouseDeltaX { get; private set; }
+        public int MouseDeltaY { get; private set; }
 
         bool mwheelUp = false;
         bool mwheelDown = false;
+        int mouseDeltaX = 0;
+        int mouseDeltaY = 0;
 
         public void Update()
         {
@@ -32,7 +36,10 @@ namespace ABSoftware.ABPixelEngine
                 this.scroll.current = this.scroll.previous = false;
             }
 
-            for(int i = 0; i < 256; i++)
+            MouseDeltaX = mouseDeltaX;
+            MouseDeltaY = mouseDeltaY;
+
+            for (int i = 0; i < 256; i++)
             {
                 keyStates[i].previous = keyStates[i].current;
 
@@ -40,6 +47,8 @@ namespace ABSoftware.ABPixelEngine
             }
             mwheelUp = false;
             mwheelDown = false;
+            mouseDeltaX = 0;
+            mouseDeltaY = 0;
         }
 
         public void SetState(Key key, bool state)
@@ -61,6 +70,12 @@ namespace ABSoftware.ABPixelEngine
             this.WindowMouseY = wy;
             this.MouseX = x;
             this.MouseY = y;
+        }
+
+        public void SetMouseDelta(int dx, int dy)
+        {
+            this.mouseDeltaX += dx;
+            this.mouseDeltaY += dy;
         }
 
         public void KillStates()

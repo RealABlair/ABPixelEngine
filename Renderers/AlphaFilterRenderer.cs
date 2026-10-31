@@ -362,8 +362,6 @@ namespace ABSoftware.ABPixelEngine.Renderers
             int xEnd = Math.Min(bufferWidth - 1, ex);
             int rowWidth = xEnd - xStart + 1;
 
-            byte srcR = color.R, srcG = color.G, srcB = color.B, srcA = color.A;
-
             if (rowWidth > 0)
             {
                 if (y >= 0 && y < bufferHeight)
@@ -734,8 +732,6 @@ namespace ABSoftware.ABPixelEngine.Renderers
             if (x + radius < 0 || x - radius >= bufferWidth || y + radius < 0 || y - radius >= bufferHeight)
                 return;
 
-            byte srcR = color.R, srcG = color.G, srcB = color.B, srcA = color.A;
-
             if (radius <= 0)
             {
                 if (x >= 0 && x < bufferWidth && y >= 0 && y < bufferHeight)
@@ -843,8 +839,6 @@ namespace ABSoftware.ABPixelEngine.Renderers
 
             if (x0 >= x1 || y0 >= y1) return;
 
-            byte srcR = color.R, srcG = color.G, srcB = color.B, srcA = color.A;
-
             int rowWidth = x1 - x0;
 
             for (int i = y0; i < y1; i++)
@@ -922,7 +916,7 @@ namespace ABSoftware.ABPixelEngine.Renderers
                         curXb += invSlopeB * (-y1); curUb += duSlopeB * (-y1); curVb += dvSlopeB * (-y1);
                     }
 
-                    int startY = Math.Max(scanStart, y1 + 1);
+                    int startY = Math.Max(scanStart, y1);
                     for (int y = startY; y <= scanEnd; y++)
                     {
                         RasterizeTexturedScanline(y, (int)curXa, (int)curXb, curUa, curVa, curUb, curVb, texPixelsPtr, texPalettePtr, texWidth, texHeightMinus1, texWidthMinus1);
@@ -986,6 +980,143 @@ namespace ABSoftware.ABPixelEngine.Renderers
                 ptr++;
                 ua += du;
                 va += dv;
+            }
+        }
+
+        public void FastFillTexturedTriangle(int x0, int y0, float u0, float v0, int x1, int y1, float u1, float v1, int x2, int y2, float u2, float v2, Bitmap texture)
+        {
+            fixed (byte* texPixelsPtr = texture.Pixels)
+            fixed (uint* texPalettePtr = texture.Palette)
+            {
+                int texWidth = texture.Width;
+                int texHeight = texture.Height;
+
+                int xMask = texWidth - 1;
+                int yMask = texHeight - 1;
+
+                int widthShift = Mathf.TrailingZeroCount(texWidth);
+
+                if (y0 > y1) { (x0, x1) = (x1, x0); (y0, y1) = (y1, y0); (u0, u1) = (u1, u0); (v0, v1) = (v1, v0); }
+                if (y0 > y2) { (x0, x2) = (x2, x0); (y0, y2) = (y2, y0); (u0, u2) = (u2, u0); (v0, v2) = (v2, v0); }
+                if (y1 > y2) { (x1, x2) = (x2, x1); (y1, y2) = (y2, y1); (u1, u2) = (u2, u1); (v1, v2) = (v2, v1); }
+
+                int totalHeight = y2 - y0;
+                if (totalHeight == 0) return;
+
+                float invSlopeA = (float)(x2 - x0) / totalHeight;
+                float duSlopeA = (u2 - u0) / totalHeight;
+                float dvSlopeA = (v2 - v0) / totalHeight;
+
+                float curXa = x0, curUa = u0, curVa = v0;
+                float curXb = x0, curUb = u0, curVb = v0;
+
+                int scanStart = Math.Max(0, y0);
+                int scanEnd = Math.Min(bufferHeight - 1, y2);
+
+                int height1 = y1 - y0;
+                if (height1 > 0)
+                {
+                    float invSlopeB = (float)(x1 - x0) / height1;
+                    float duSlopeB = (u1 - u0) / height1;
+                    float dvSlopeB = (v1 - v0) / height1;
+
+                    if (y0 < 0)
+                    {
+                        int skip = -y0;
+                        curXa += invSlopeA * skip; curUa += duSlopeA * skip; curVa += dvSlopeA * skip;
+                        curXb += invSlopeB * skip; curUb += duSlopeB * skip; curVb += dvSlopeB * skip;
+                    }
+
+                    int limit = Math.Min(scanEnd, y1);
+                    for (int y = scanStart; y <= limit; y++)
+                    {
+                        FastRasterizeTexturedScanline(y, (int)curXa, (int)curXb, curUa, curVa, curUb, curVb, texPixelsPtr, texPalettePtr, xMask, yMask, widthShift);
+                        curXa += invSlopeA; curUa += duSlopeA; curVa += dvSlopeA;
+                        curXb += invSlopeB; curUb += duSlopeB; curVb += dvSlopeB;
+                    }
+                }
+
+                int height2 = y2 - y1;
+                if (height2 > 0)
+                {
+                    float invSlopeB = (float)(x2 - x1) / height2;
+                    float duSlopeB = (u2 - u1) / height2;
+                    float dvSlopeB = (v2 - v1) / height2;
+
+                    curXb = x1; curUb = u1; curVb = v1;
+                    if (y1 < 0)
+                    {
+                        curXa = x0 + invSlopeA * (-y0); curUa = u0 + duSlopeA * (-y0); curVa = v0 + dvSlopeA * (-y0);
+                        curXb += invSlopeB * (-y1); curUb += duSlopeB * (-y1); curVb += dvSlopeB * (-y1);
+                    }
+
+                    int startY = Math.Max(scanStart, y1);
+                    for (int y = startY; y <= scanEnd; y++)
+                    {
+                        FastRasterizeTexturedScanline(y, (int)curXa, (int)curXb, curUa, curVa, curUb, curVb, texPixelsPtr, texPalettePtr, xMask, yMask, widthShift);
+                        curXa += invSlopeA; curUa += duSlopeA; curVa += dvSlopeA;
+                        curXb += invSlopeB; curUb += duSlopeB; curVb += dvSlopeB;
+                    }
+                }
+            }
+        }
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+        private unsafe void FastRasterizeTexturedScanline(int y, int xa, int xb, float ua, float va, float ub, float vb, byte* texPixels, uint* texPalette, int xMask, int yMask, int widthShift)
+        {
+            if (xa > xb)
+            {
+                (xa, xb) = (xb, xa);
+                (ua, ub) = (ub, ua);
+                (va, vb) = (vb, va);
+            }
+
+            int xStart = xa < 0 ? 0 : xa;
+            int xEnd = xb >= bufferWidth ? bufferWidth - 1 : xb;
+            int length = xEnd - xStart + 1;
+            if (length <= 0) return;
+
+            float width = xb - xa;
+            float divWidth = width > 0 ? 1.0f / width : 0;
+
+            float du = (ub - ua) * divWidth;
+            float dv = (vb - va) * divWidth;
+
+            if (xa < 0)
+            {
+                ua += du * (-xa);
+                va += dv * (-xa);
+            }
+
+            Pixel* ptr = pixelsBuffer + (y * bufferWidth) + xStart;
+
+            int fpU = (int)(ua * xMask * 65536f);
+            int fpV = (int)(va * yMask * 65536f);
+            int fpStepU = (int)(du * xMask * 65536f);
+            int fpStepV = (int)(dv * yMask * 65536f);
+
+            for (int i = 0; i < length; i++)
+            {
+                int sx = (fpU >> 16) & xMask;
+                int sy = (fpV >> 16) & yMask;
+
+                int texIndex = (sy << widthShift) + sx;
+
+                uint rawColor = texPalette[texPixels[texIndex]];
+
+                byte texA = (byte)((rawColor >> 24) & 0xFF);
+                int texR = (int)((rawColor >> 16) & 0xFF);
+                int texG = (int)((rawColor >> 8) & 0xFF);
+                int texB = (int)(rawColor & 0xFF);
+
+                if (texA > 0)
+                {
+                    BlendPixel(ptr, sx, sy, rawColor);
+                }
+
+                ptr++;
+                fpU += fpStepU;
+                fpV += fpStepV;
             }
         }
 
@@ -1053,7 +1184,7 @@ namespace ABSoftware.ABPixelEngine.Renderers
                         curXb += invSlopeB * (-y1); curUb += duSlopeB * (-y1); curVb += dvSlopeB * (-y1);
                     }
 
-                    int startY = Math.Max(scanStart, y1 + 1);
+                    int startY = Math.Max(scanStart, y1);
                     for (int y = startY; y <= scanEnd; y++)
                     {
                         RasterizeTexturedTintScanline(y, (int)curXa, (int)curXb, curUa, curVa, curUb, curVb, texPixelsPtr, texPalettePtr, texWidth, texHeightMinus1, texWidthMinus1, color);
@@ -1180,7 +1311,7 @@ namespace ABSoftware.ABPixelEngine.Renderers
                     curXb += invSlopeB * (-y1);
                 }
 
-                int startY = Math.Max(scanStart, y1 + 1);
+                int startY = Math.Max(scanStart, y1);
                 for (int y = startY; y <= scanEnd; y++)
                 {
                     RasterizeScanline(y, (int)curXa, (int)curXb, color);
@@ -1201,13 +1332,70 @@ namespace ABSoftware.ABPixelEngine.Renderers
             int length = xEnd - xStart + 1;
             if (length <= 0) return;
 
-            byte srcR = color.R, srcG = color.G, srcB = color.B, srcA = color.A;
-
             Pixel* ptr = pixelsBuffer + (y * bufferWidth) + xStart;
             for (int i = 0; i < length; i++)
             {
                 BlendPixel(ptr, xStart + i, y, color);
                 ptr++;
+            }
+        }
+
+        public void DrawSprite(int x, int y, int width, int height, Bitmap bmp)
+        {
+            if (x >= bufferWidth || y >= bufferHeight || x + width <= 0 || y + height <= 0) return;
+
+            int xStart = Math.Max(0, x);
+            int xEnd = Math.Min(bufferWidth, x + width);
+            int yStart = Math.Max(0, y);
+            int yEnd = Math.Min(bufferHeight, y + height);
+
+            fixed (byte* texPixelsPtr = bmp.Pixels)
+            fixed (uint* texPalettePtr = bmp.Palette)
+            {
+                int texWidth = bmp.Width;
+                int texHeight = bmp.Height;
+
+                int uStepFP = (texWidth << 16) / width;
+                int vStepFP = (texHeight << 16) / height;
+
+                int startUFP = (xStart - x) * uStepFP;
+                int startVFP = (yStart - y) * vStepFP;
+
+                int currentVFP = startVFP;
+
+                for (int sy = yStart; sy < yEnd; sy++)
+                {
+                    int texY = currentVFP >> 16;
+
+                    if (texY >= texHeight) texY = texHeight - 1;
+                    else if (texY < 0) texY = 0;
+
+                    byte* texRowPtr = texPixelsPtr + (texY * texWidth);
+
+                    Pixel* ptr = pixelsBuffer + (sy * bufferWidth) + xStart;
+
+                    int currentUFP = startUFP;
+                    int rowLength = xEnd - xStart;
+
+                    for (int sx = 0; sx < rowLength; sx++)
+                    {
+                        int texX = currentUFP >> 16;
+
+                        if (texX >= texWidth) texX = texWidth - 1;
+                        else if (texX < 0) texX = 0;
+
+                        Pixel pixel = *(Pixel*)&texPalettePtr[texRowPtr[texX]];
+                        if(pixel.A > 0)
+                        {
+                            BlendPixel(ptr, xStart + sx, sy, pixel);
+                        }
+
+                        ptr++;
+                        currentUFP += uStepFP;
+                    }
+
+                    currentVFP += vStepFP;
+                }
             }
         }
 

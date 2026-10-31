@@ -18,6 +18,9 @@ namespace ABSoftware.ABPixelEngine
         public static float Tanf(float x) => (float)Math.Tan(x);
         public static float Atanf(float x) => (float)Math.Atan(x);
         public static float Atan2f(float y, float x) => (float)Math.Atan2(y, x);
+        public static int Floor(float x) => (int)Math.Floor(x);
+        public static int Ceiling(float x) => (int)Math.Ceiling(x);
+        public static int Round(float x) => (int)Math.Round(x);
 
         public static float Abs(float x)
         {
@@ -117,5 +120,14 @@ namespace ABSoftware.ABPixelEngine
 
         public static float Lerp(float start, float end, float t) => start + (end - start) * t;
         public static float InvLerp(float start, float end, float val) => (val - start) / (end - start);
+
+        static readonly byte[] DeBruijnTable = new byte[] { 0, 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8, 31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9 };
+        public static int TrailingZeroCount(int value)
+        {
+            if (value == 0)
+                return 32;
+
+            return DeBruijnTable[(uint)((value & -value) * 0x077CB531U) >> 27];
+        }
     }
 }

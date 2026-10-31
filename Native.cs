@@ -145,6 +145,14 @@ namespace ABSoftware.ABPixelEngine
         public static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
         [DllImport(user32, CharSet = CharSet.Auto)]
         public static extern bool SetWindowText(IntPtr hWnd, string lpString);
+        [DllImport(user32)]
+        public static extern bool SetCursorPos(int X, int Y);
+
+        [DllImport(user32)]
+        public static extern bool ClientToScreen(IntPtr hWnd, ref NativePoint lpPoint);
+
+        [DllImport(user32)]
+        public static extern int ShowCursor(bool bShow);
 
         public const uint SWP_NOMOVE = 0x0002;
         public const uint SWP_NOZORDER = 0x0004;
@@ -154,6 +162,13 @@ namespace ABSoftware.ABPixelEngine
 
         public const uint WM_ACTIVATE = 0x0006;
         public const int WA_INACTIVE = 0;
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct NativePoint
+        {
+            public int X;
+            public int Y;
+        }
 
         [StructLayout(LayoutKind.Sequential)]
         public struct RECT
@@ -1374,7 +1389,8 @@ namespace ABSoftware.ABPixelEngine
             /// <summary>
             /// A top-level window is being replaced. The window exists when the system calls this hook.
             /// </summary>
-            HSHELL_WINDOWREPLACED = 13
+            HSHELL_WINDOWREPLACED = 13,
+            WM_UPDATE_CURSOR = 0x401
         }
 
         public enum IDC : ushort

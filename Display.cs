@@ -243,5 +243,38 @@ namespace ABSoftware.ABPixelEngine
                 DispatchMessage(ref msg);
             }
         }
+
+        protected void ApplyCursorState(bool isCursorLocked, ref bool isCursorVisible, bool isFocused, ref bool ignoreNextMouseMove)
+        {
+            if (isCursorLocked && isCursorVisible)
+            {
+                while (ShowCursor(false) >= 0) { }
+                isCursorVisible = false;
+            }
+            else if (!isCursorLocked && !isCursorVisible)
+            {
+                while (ShowCursor(true) < 0) { }
+                isCursorVisible = true;
+            }
+
+            if (isCursorLocked && isFocused)
+            {
+                CenterCursorNative(ref ignoreNextMouseMove);
+            }
+        }
+
+        protected void CenterCursorNative(ref bool ignoreNextMouseMove)
+        {
+            if (hWnd == IntPtr.Zero) return;
+
+            int centerX = this.Width / 2;
+            int centerY = this.Height / 2;
+
+            NativePoint pt = new NativePoint { X = centerX, Y = centerY };
+            ClientToScreen(hWnd, ref pt);
+
+            ignoreNextMouseMove = true;
+            SetCursorPos(pt.X, pt.Y);
+        }
     }
 }

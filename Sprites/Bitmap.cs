@@ -51,9 +51,51 @@ namespace ABSoftware.ABPixelEngine.Sprites
                             Width = data.Width;
                             Height = data.Height;
 
-                            Palette = paletteType == PaletteType.Fast ? Palettes.FastPalette : Palettes.CreateAdaptivePalette(data.RgbaPixels);
-                            Pixels = Palettes.IndexImage(data.RgbaPixels, Palette);
+                            if(data.BitsPerPixel == 32 && paletteType == PaletteType.AdaptiveAlpha)
+                            {
+                                Palette = Palettes.CreateAdaptivePaletteAlpha(data.RgbaPixels);
+                                Pixels = Palettes.IndexImageAlpha(data.RgbaPixels, Palette);
+                            }
+                            else
+                            {
+                                Palette = paletteType == PaletteType.Fast ? Palettes.FastPalette : Palettes.CreateAdaptivePalette(data.RgbaPixels);
+                                Pixels = Palettes.IndexImage(data.RgbaPixels, Palette);
+                            }
                         }
+
+                        data = null;
+                    }
+                    break;
+                case FileType.PNG:
+                    {
+                        PNGData data = PNGParser.LoadBitmap(fileName);
+
+                        Width = data.Width;
+                        Height = data.Height;
+
+                        switch(paletteType)
+                        {
+                            case PaletteType.Fast:
+                                {
+                                    Palette = Palettes.FastPalette;
+                                    Pixels = Palettes.IndexImage(data.rgbaData, Palette);
+                                }
+                                break;
+                            case PaletteType.Adaptive:
+                                {
+                                    Palette = Palettes.CreateAdaptivePalette(data.rgbaData);
+                                    Pixels = Palettes.IndexImage(data.rgbaData, Palette);
+                                }
+                                break;
+                            case PaletteType.AdaptiveAlpha:
+                                {
+                                    Palette = Palettes.CreateAdaptivePaletteAlpha(data.rgbaData);
+                                    Pixels = Palettes.IndexImageAlpha(data.rgbaData, Palette);
+                                }
+                                break;
+                        }
+
+                        data = null;
                     }
                     break;
             }
@@ -98,6 +140,15 @@ namespace ABSoftware.ABPixelEngine.Sprites
             return palette[pixels[sy * Width + sx]];
         }
 
+        public void ReplaceColor(Pixel oldColor, Pixel newColor)
+        {
+            for(int i = 0; i < Palette.Length; i++)
+            {
+                if (Palette[i] == oldColor)
+                    Palette[i] = newColor;
+            }
+        }
+
         public static explicit operator Sprite(Bitmap bitmap)
         {
             Sprite s = new Sprite(bitmap.Width, bitmap.Height);
@@ -119,12 +170,8 @@ namespace ABSoftware.ABPixelEngine.Sprites
     {
         RAW,
         BMP,
+        TGA, //targa
+        PNG,
         ABPESPR
-    }
-
-    public enum PaletteType
-    {
-        Fast,
-        Adaptive
     }
 }

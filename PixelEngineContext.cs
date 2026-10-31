@@ -34,6 +34,21 @@ namespace ABSoftware.ABPixelEngine
         private ABDictionary<PixelMode, IRenderer> renderers;
         private IRenderer currentRenderer;
 
+        private bool isCursorLocked = false;
+        private bool isCursorVisible = true;
+        private bool ignoreNextMouseMove = false;
+
+        public bool IsCursorLocked
+        {
+            get => isCursorLocked;
+            set
+            {
+                if (isCursorLocked == value) return;
+                isCursorLocked = value;
+                Native.PostMessage(hWnd, (uint)Native.WM.WM_UPDATE_CURSOR, (IntPtr)(isCursorLocked ? 1 : 0), IntPtr.Zero);
+            }
+        }
+
         public PixelEngineContext() : this(0.02f) { }
 
         public PixelEngineContext(float fixedUpdateDelta)
@@ -105,6 +120,7 @@ namespace ABSoftware.ABPixelEngine
             foreach (var renderer in renderers)
             {
                 renderer.Value.Initialize(renderBuffer);
+                renderer.Value.PassPixelFilter(pixelFilter);
             }
 
             if (!OnStart())
@@ -186,9 +202,17 @@ namespace ABSoftware.ABPixelEngine
                         int state = (int)(wParam.ToInt64() & 0xFFFF);
 
                         if (state == Native.WA_INACTIVE)
+                        {
                             IsFocused = false;
+                            if (isCursorLocked && !isCursorVisible)
+                                ApplyCursorState(false, ref isCursorVisible, false, ref ignoreNextMouseMove);
+                        }
                         else
+                        {
                             IsFocused = true;
+                            if (isCursorLocked)
+                                ApplyCursorState(isCursorLocked, ref isCursorVisible, IsFocused, ref ignoreNextMouseMove);
+                        }
                     }
                     break;
                 case Native.WM.KEYDOWN:
@@ -205,13 +229,38 @@ namespace ABSoftware.ABPixelEngine
                         Input.SetState((Key)wParam.ToInt32(), false);
                     }
                     break;
+                case Native.WM.WM_UPDATE_CURSOR: //Сustom
+                    {
+                        bool locked = wParam.ToInt32() == 1;
+                        ApplyCursorState(locked, ref isCursorVisible, IsFocused, ref ignoreNextMouseMove);
+                        return IntPtr.Zero;
+                    }
                 case Native.WM.MOUSEMOVE:
                     {
+                        if(ignoreNextMouseMove)
+                        {
+                            ignoreNextMouseMove = false;
+                            return IntPtr.Zero;
+                        }
+
                         int arg = lParam.ToInt32();
                         short low = (short)(arg & 0xFFFF);
                         short high = (short)(arg >> 16 & 0xFFFF);
 
-                        Input.SetMouse(low, high, low / PixelWidth, high / PixelWidth);
+                        if(isCursorLocked && IsFocused)
+                        {
+                            int deltaX = low - (Width / 2);
+                            int deltaY = high - (Height / 2);
+
+                            Input.SetMouseDelta(deltaX, deltaY);
+
+                            CenterCursorNative(ref ignoreNextMouseMove);
+                        }
+                        else
+                        {
+                            Input.SetMouse(low, high, low / PixelWidth, high / PixelWidth);
+                            Input.SetMouseDelta(0, 0);
+                        }
                     }
                     break;
                 case Native.WM.MOUSEWHEEL:
@@ -321,6 +370,15 @@ namespace ABSoftware.ABPixelEngine
             currentRenderer.FillTexturedTriangle(x0, y0, u0, v0, x1, y1, u1, v1, x2, y2, u2, v2, texture, color);
         }
 
+        /// <summary>
+        /// A faster method for drawing textured triangles
+        /// </summary>
+        /// <param name="texture">A texture with size that's a power of 2. i.e 8x8, 16x16, 32x32 etc.</param>
+        public void FastFillTexturedTriangle(int x0, int y0, float u0, float v0, int x1, int y1, float u1, float v1, int x2, int y2, float u2, float v2, Bitmap texture)
+        {
+            currentRenderer.FastFillTexturedTriangle(x0, y0, u0, v0, x1, y1, u1, v1, x2, y2, u2, v2, texture);
+        }
+
         public void DrawEllipse(int xc, int yc, int rx, int ry, Pixel color)
         {
             currentRenderer.DrawEllipse(xc, yc, rx, ry, color);
@@ -359,6 +417,11 @@ namespace ABSoftware.ABPixelEngine
         public void DrawStringBox(int x, int y, int width, int height, string text, Font font, Pixel color, int scaleX, int scaleY)
         {
             currentRenderer.DrawStringBox(x, y, width, height, text, font, color, scaleX, scaleY);
+        }
+
+        public void DrawSprite(int x, int y, int width, int height, Bitmap texture)
+        {
+            currentRenderer.DrawSprite(x, y, width, height, texture);
         }
 
         #region int2 extensions
