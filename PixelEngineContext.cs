@@ -61,32 +61,30 @@ namespace ABSoftware.ABPixelEngine
             renderers = new ABDictionary<PixelMode, IRenderer>()
             {
                 { PixelMode.Direct, new DirectRenderer() },
-                { PixelMode.Alpha, new AlphaRenderer() },
-                { PixelMode.Filter, new FilterRenderer() },
-                { PixelMode.AlphaFilter, new AlphaFilterRenderer() }
+                { PixelMode.Alpha, new AlphaRenderer() }
             };
 
             currentRenderer = renderers[DrawMode];
         }
 
-        public void Initialize(int width, int height)
+        public void Initialize(int width, int height, WindowState state)
         {
-            Initialize(this.GetType().Name, width, height);
+            Initialize(this.GetType().Name, width, height, state);
         }
 
-        public void Initialize(string name, int width, int height)
+        public void Initialize(string name, int width, int height, WindowState state)
         {
-            renderBuffer = SetupWindow(name, width, height, WndProc);
+            renderBuffer = SetupWindow(name, width, height, WndProc, state);
         }
 
-        public void Initialize(int width, int height, int pixelWidth, int pixelHeight)
+        public void Initialize(int width, int height, int pixelWidth, int pixelHeight, WindowState state)
         {
-            Initialize(this.GetType().Name, width, height, pixelWidth, pixelHeight);
+            Initialize(this.GetType().Name, width, height, pixelWidth, pixelHeight, state);
         }
 
-        public void Initialize(string name, int width, int height, int pixelWidth, int pixelHeight)
+        public void Initialize(string name, int width, int height, int pixelWidth, int pixelHeight, WindowState state)
         {
-            renderBuffer = SetupWindow(name, width, height, WndProc, pixelWidth, pixelHeight);
+            renderBuffer = SetupWindow(name, width, height, WndProc, state, pixelWidth, pixelHeight);
         }
 
         public void Start()
@@ -111,7 +109,6 @@ namespace ABSoftware.ABPixelEngine
 
         void MainLoop()
         {
-            pixelFilter = defaultPixelFilter;
             Input = new Input();
 
             CreateContext();
@@ -120,7 +117,6 @@ namespace ABSoftware.ABPixelEngine
             foreach (var renderer in renderers)
             {
                 renderer.Value.Initialize(renderBuffer);
-                renderer.Value.PassPixelFilter(pixelFilter);
             }
 
             if (!OnStart())
@@ -167,7 +163,10 @@ namespace ABSoftware.ABPixelEngine
             }
 
             DestroyOpenGL();
+            renderBuffer.Destroy();
             CloseWindow();
+
+            OnStop();
         }
 
         public void SetTargetFramerate(float framerate)
@@ -258,8 +257,19 @@ namespace ABSoftware.ABPixelEngine
                         }
                         else
                         {
-                            Input.SetMouse(low, high, low / PixelWidth, high / PixelWidth);
+                            int clientHeight = (currentWindowState == WindowState.Windowed) ? Height : Height + 1;
+                            int winViewportY = clientHeight - (viewportY + viewportHeight);
+
+                            float normX = (float)(low - viewportX) / viewportWidth;
+                            float normY = (float)(high - viewportY) / viewportHeight;
+
+                            int pixelX = Mathf.Clamp((int)(normX * renderBuffer.Width), 0, renderBuffer.Width - 1);
+                            int pixelY = Mathf.Clamp((int)(normY * renderBuffer.Height), 0, renderBuffer.Height - 1);
+
+                            Input.SetMouse(low, high, pixelX, pixelY);
                             Input.SetMouseDelta(0, 0);
+                            /*Input.SetMouse(low, high, low / PixelWidth, high / PixelWidth);
+                            Input.SetMouseDelta(0, 0);*/
                         }
                     }
                     break;
@@ -313,6 +323,12 @@ namespace ABSoftware.ABPixelEngine
         {
             this.DrawMode = state;
             this.currentRenderer = this.renderers[state];
+        }
+
+        public void RegisterRenderer(PixelMode rendererState, IRenderer renderer)
+        {
+            this.renderers.Add(rendererState, renderer);
+            renderer.Initialize(renderBuffer);
         }
 
         public Pixel GetPixel(int x, int y)
@@ -424,6 +440,26 @@ namespace ABSoftware.ABPixelEngine
             currentRenderer.DrawSprite(x, y, width, height, texture);
         }
 
+        public void FillTexturedPolygon(int x0, int y0, float u0, float v0, int x1, int y1, float u1, float v1, int x2, int y2, float u2, float v2, int x3, int y3, float u3, float v3, Bitmap texture)
+        {
+            currentRenderer.FillTexturedPolygon(x0, y0, u0, v0, x1, y1, u1, v1, x2, y2, u2, v2, x3, y3, u3, v3, texture);
+        }
+
+        public void FastFillTexturedPolygon(int x0, int y0, float u0, float v0, int x1, int y1, float u1, float v1, int x2, int y2, float u2, float v2, int x3, int y3, float u3, float v3, Bitmap texture)
+        {
+            currentRenderer.FastFillTexturedPolygon(x0, y0, u0, v0, x1, y1, u1, v1, x2, y2, u2, v2, x3, y3, u3, v3, texture);
+        }
+
+        public void DrawPixelArray(int x, int y, int arrayWidth, int arrayHeight, Pixel[] pixels)
+        {
+            currentRenderer.DrawPixelArray(x, y, arrayWidth, arrayHeight, pixels);
+        }
+
+        public void DrawPixelArrayScaled(int x, int y, int srcWidth, int srcHeight, int tgtWidth, int tgtHeight, Pixel[] pixels)
+        {
+            currentRenderer.DrawPixelArrayScaled(x, y, srcWidth, srcHeight, tgtWidth, tgtHeight, pixels);
+        }
+
         #region int2 extensions
         public void Draw(int2 position, Pixel color) => Draw(position.x, position.y, color);
         public void FillRectangle(int2 position, int2 size, Pixel color) => FillRectangle(position.x, position.y, size.x, size.y, color);
@@ -440,37 +476,6 @@ namespace ABSoftware.ABPixelEngine
         public void FillPolygon(int2 position1, int2 position2, int2 position3, int2 position4, Pixel color) => FillPolygon(position1.x, position1.y, position2.x, position2.y, position3.x, position3.y, position4.x, position4.y, color);
         #endregion
 
-        #region Filtering
-        DefaultFilter defaultPixelFilter = new DefaultFilter();
-        IPixelFilter pixelFilter;
-
-        public void EnablePixelFilter(IPixelFilter filter)
-        {
-            pixelFilter = filter;
-            foreach(var renderer in renderers)
-            {
-                renderer.Value.PassPixelFilter(pixelFilter);
-            }
-        }
-
-        public void DisablePixelFilter()
-        {
-            pixelFilter = defaultPixelFilter;
-            foreach (var renderer in renderers)
-            {
-                renderer.Value.PassPixelFilter(pixelFilter);
-            }
-        }
-
-        struct DefaultFilter : IPixelFilter
-        {
-            public Pixel Filter(int x, int y, Pixel newPixel, Pixel prevPixel)
-            {
-                return newPixel;
-            }
-        }
-        #endregion
-
         /// <returns>Returns a flag if the engine should keep itself active or not</returns>
         public virtual bool OnStart() { return true; }
         public virtual void OnFixedUpdate() { }
@@ -482,8 +487,8 @@ namespace ABSoftware.ABPixelEngine
         {
             Direct = 1,
             Alpha = 2,
-            Filter = 4,
-            AlphaFilter = Alpha | Filter
+
+            Custom = 10
         }
     }
 }

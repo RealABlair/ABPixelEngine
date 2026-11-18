@@ -16,7 +16,7 @@ namespace ABSoftware.ABPixelEngine
         public IntPtr hDC { get; private set; }
         public IntPtr glContext { get; private set; }
         int textureId;
-        GCHandle bufferHandle;
+        //GCHandle bufferHandle;
 
         public string WindowName { get; private set; }
         public int Width { get; private set; }
@@ -25,9 +25,16 @@ namespace ABSoftware.ABPixelEngine
         public int PixelWidth = 1;
         public int PixelHeight = 1;
 
+        protected WindowState currentWindowState;
+
+        protected int viewportX;
+        protected int viewportY;
+        protected int viewportWidth;
+        protected int viewportHeight;
+
         public bool IsShuttingDown { get; private set; }
 
-        public RenderBuffer SetupWindow(string name, int width, int height, WndProcDelegate wndProc, int pixelWidth = 1, int pixelHeight = 1)
+        public RenderBuffer SetupWindow(string name, int width, int height, WndProcDelegate wndProc, WindowState windowState, int pixelWidth = 1, int pixelHeight = 1)
         {
             this.WindowName = name;
 
@@ -37,6 +44,11 @@ namespace ABSoftware.ABPixelEngine
             this.PixelHeight = pixelHeight;
             this.Width = width;
             this.Height = height;
+
+            this.currentWindowState = windowState;
+
+            int bufferWidth = width / pixelWidth;
+            int bufferHeight = height / pixelHeight;
 
             IntPtr handle = GetModuleHandle(null);
 
@@ -62,9 +74,9 @@ namespace ABSoftware.ABPixelEngine
             rect.Right = width;
             rect.Bottom = height;
 
-            WindowStyles style = WindowStyles.WS_OVERLAPPED | WindowStyles.WS_CAPTION | WindowStyles.WS_SYSMENU | WindowStyles.WS_MINIMIZEBOX | WindowStyles.WS_VISIBLE;
-
-            AdjustWindowRect(ref rect, (uint)style, false);
+            //WindowStyles style = WindowStyles.WS_OVERLAPPED | WindowStyles.WS_CAPTION | WindowStyles.WS_SYSMENU | WindowStyles.WS_MINIMIZEBOX | WindowStyles.WS_VISIBLE;
+            WindowStyles style;
+            int posX, posY, winWidth, winHeight;
 
             short registerResult = RegisterClassEx(ref wndClass);
             if(registerResult == 0)
@@ -72,7 +84,70 @@ namespace ABSoftware.ABPixelEngine
                 throw new Exception("Window registration error");
             }
 
-            this.hWnd = CreateWindowEx(WindowStylesEx.WS_EX_APPWINDOW, "PixelEngineWindowInstance", name, style, CW_USEDEFAULT, CW_USEDEFAULT, rect.Right - rect.Left, rect.Bottom - rect.Top, IntPtr.Zero, IntPtr.Zero, handle, IntPtr.Zero);
+            if(windowState == WindowState.Windowed)
+            {
+                style = WindowStyles.WS_OVERLAPPED | WindowStyles.WS_CAPTION | WindowStyles.WS_SYSMENU | WindowStyles.WS_MINIMIZEBOX | WindowStyles.WS_VISIBLE;
+
+                AdjustWindowRect(ref rect, (uint)style, false);
+
+                winWidth = rect.Right - rect.Left;
+                winHeight = rect.Bottom - rect.Top;
+                posX = CW_USEDEFAULT;
+                posY = CW_USEDEFAULT;
+
+                viewportX = 0;
+                viewportY = 0;
+                viewportWidth = Width;
+                viewportHeight = Height;
+            }
+            else
+            {
+                this.Width = GetSystemMetrics(SM_CXSCREEN);
+                this.Height = GetSystemMetrics(SM_CYSCREEN);
+
+                style = WindowStyles.WS_POPUP | WindowStyles.WS_VISIBLE;
+
+                posX = 0;
+                posY = 0;
+                winWidth = Width;
+                winHeight = Height + 1;
+
+                if(windowState == WindowState.Fullscreen)
+                {
+                    float targetAspect = (float)(width / PixelWidth) / (height / PixelHeight);
+                    float screenAspect = (float)Width / Height;
+
+                    if (screenAspect > targetAspect)
+                    {
+                        viewportHeight = Height;
+                        viewportWidth = (int)(Height * targetAspect);
+                        viewportX = (Width - viewportWidth) / 2;
+                        viewportY = 0;
+                    }
+                    else
+                    {
+                        viewportWidth = Width;
+                        viewportHeight = (int)(Width / targetAspect);
+                        viewportX = 0;
+                        viewportY = (Height - viewportHeight) / 2;
+                    }
+                }
+                else
+                {
+                    viewportX = 0;
+                    viewportY = 0;
+                    viewportWidth = Width;
+                    viewportHeight = Height;
+
+                    this.PixelWidth = Width / width;
+                    this.PixelHeight = Height / height;
+
+                    bufferWidth = Width / PixelWidth;
+                    bufferHeight = Height / PixelHeight;
+                }
+            }
+
+            this.hWnd = CreateWindowEx(WindowStylesEx.WS_EX_APPWINDOW, "PixelEngineWindowInstance", name, style, posX, posY, winWidth, winHeight, IntPtr.Zero, IntPtr.Zero, handle, IntPtr.Zero);
             if(hWnd == IntPtr.Zero)
             {
                 int code = Marshal.GetLastWin32Error();
@@ -80,7 +155,7 @@ namespace ABSoftware.ABPixelEngine
                 throw new Exception("Window creation error. Code: " + code);
             }
 
-            return new RenderBuffer(Width / PixelWidth, Height / PixelHeight);
+            return new RenderBuffer(bufferWidth, bufferHeight);
         }
 
         public void CreateContext()
@@ -119,12 +194,12 @@ namespace ABSoftware.ABPixelEngine
 
         public void InitOpenGL(RenderBuffer renderBuffer)
         {
-            bufferHandle = GCHandle.Alloc(renderBuffer.Pixels, GCHandleType.Pinned);
-            renderBuffer.Init(bufferHandle.AddrOfPinnedObject());
+            renderBuffer.SetPixelsHandle(GCHandle.Alloc(renderBuffer.Pixels, GCHandleType.Pinned));
+            renderBuffer.Init(renderBuffer.PixelsHandle.AddrOfPinnedObject());
 
             glEnable(GL_TEXTURE_2D);
 
-            glViewport(0, 0, Width, Height);
+            glViewport(viewportX, viewportY, viewportWidth, viewportHeight);
 
             glGenTextures(1, out textureId);
 
@@ -188,16 +263,16 @@ namespace ABSoftware.ABPixelEngine
 
         protected void UpdateBuffer(ref RenderBuffer renderBuffer)
         {
-            if (bufferHandle.IsAllocated)
-                bufferHandle.Free();
+            if (renderBuffer.PixelsHandle.IsAllocated)
+                renderBuffer.PixelsHandle.Free();
 
             renderBuffer = new RenderBuffer(Width / PixelWidth, Height / PixelHeight);
 
-            bufferHandle = GCHandle.Alloc(renderBuffer.Pixels, GCHandleType.Pinned);
+            renderBuffer.SetPixelsHandle(GCHandle.Alloc(renderBuffer.Pixels, GCHandleType.Pinned));
 
-            renderBuffer.Init(bufferHandle.AddrOfPinnedObject());
+            renderBuffer.Init(renderBuffer.PixelsHandle.AddrOfPinnedObject());
 
-            glViewport(0, 0, Width, Height);
+            glViewport(viewportX, viewportY, viewportWidth, viewportHeight);
 
             glBindTexture(GL_TEXTURE_2D, textureId);
 
@@ -219,9 +294,6 @@ namespace ABSoftware.ABPixelEngine
             {
                 ReleaseDC(hWnd, hDC);
             }
-
-            if (bufferHandle.IsAllocated)
-                bufferHandle.Free();
         }
 
         public void CloseWindow()
@@ -231,6 +303,7 @@ namespace ABSoftware.ABPixelEngine
 
         public void Rename(string newName)
         {
+            this.WindowName = newName;
             SetWindowText(hWnd, newName);
         }
 
@@ -276,5 +349,12 @@ namespace ABSoftware.ABPixelEngine
             ignoreNextMouseMove = true;
             SetCursorPos(pt.X, pt.Y);
         }
+    }
+
+    public enum WindowState
+    {
+        Windowed,
+        Fullscreen,
+        FullscreenStretched
     }
 }

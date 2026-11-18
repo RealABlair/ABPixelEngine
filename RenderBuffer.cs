@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace ABSoftware.ABPixelEngine
 {
@@ -9,10 +10,16 @@ namespace ABSoftware.ABPixelEngine
         public int Height { get; private set; }
         public Pixel[] Pixels { get; private set; }
         public IntPtr PixelsAddress { get; private set; }
+        public GCHandle PixelsHandle { get; private set; }
 
         public void Init(IntPtr pixelsAddress)
         {
             this.PixelsAddress = pixelsAddress;
+        }
+
+        public void SetPixelsHandle(GCHandle pixelsHandle)
+        {
+            this.PixelsHandle = pixelsHandle;
         }
 
         public RenderBuffer(int width, int height)
@@ -50,6 +57,23 @@ namespace ABSoftware.ABPixelEngine
                 return Pixels[y * Width + x];
 
             return Colors.Transparent;
+        }
+
+        public void Destroy()
+        {
+            if (PixelsHandle.IsAllocated)
+                PixelsHandle.Free();
+        }
+        
+        public static RenderBuffer Create(int width, int height)
+        {
+            RenderBuffer buffer = new RenderBuffer(width, height);
+
+            buffer.PixelsHandle = GCHandle.Alloc(buffer.Pixels, GCHandleType.Pinned);
+
+            buffer.PixelsAddress = buffer.PixelsHandle.AddrOfPinnedObject();
+
+            return buffer;
         }
     }
 }

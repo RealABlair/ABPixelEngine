@@ -10,11 +10,6 @@ namespace ABSoftware.ABPixelEngine.Renderers
         int bufferWidth;
         int bufferHeight;
 
-        public void PassPixelFilter(IPixelFilter pixelFilter)
-        {
-            return;
-        }
-
         public void Draw(int x, int y, Pixel color)
         {
             pixelsBuffer[y * bufferWidth + x] = color;
@@ -1333,6 +1328,91 @@ namespace ABSoftware.ABPixelEngine.Renderers
                     }
 
                     currentVFP += vStepFP;
+                }
+            }
+        }
+
+        public void FillTexturedPolygon(int x0, int y0, float u0, float v0, int x1, int y1, float u1, float v1, int x2, int y2, float u2, float v2, int x3, int y3, float u3, float v3, Bitmap texture)
+        {
+            FillTexturedTriangle(x0, y0, u0, v0, x1, y1, u1, v1, x2, y2, u2, v2, texture);
+            FillTexturedTriangle(x2, y2, u2, v2, x3, y3, u3, v3, x0, y0, u0, v0, texture);
+        }
+
+        public void FastFillTexturedPolygon(int x0, int y0, float u0, float v0, int x1, int y1, float u1, float v1, int x2, int y2, float u2, float v2, int x3, int y3, float u3, float v3, Bitmap texture)
+        {
+            FastFillTexturedTriangle(x0, y0, u0, v0, x1, y1, u1, v1, x2, y2, u2, v2, texture);
+            FastFillTexturedTriangle(x2, y2, u2, v2, x3, y3, u3, v3, x0, y0, u0, v0, texture);
+        }
+
+        public void DrawPixelArray(int x, int y, int arrayWidth, int arrayHeight, Pixel[] pixels)
+        {
+            int x0 = x;
+            int y0 = y;
+            int x1 = x + arrayWidth;
+            int y1 = y + arrayHeight;
+
+            if (x0 < 0) x0 = 0;
+            if (y0 < 0) y0 = 0;
+            if (x1 > bufferWidth) x1 = bufferWidth;
+            if (y1 > bufferHeight) y1 = bufferHeight;
+
+            if (x0 >= x1 || y0 >= y1) return;
+
+            int visibleWidth = x1 - x0;
+            int visibleHeight = y1 - y0;
+
+            int srcStartX = x0 - x;
+            int srcStartY = y0 - y;
+
+            long bytesToCopy = visibleWidth * (long)sizeof(Pixel);
+
+            fixed (Pixel* pSrc = pixels)
+            {
+                for (int row = 0; row < visibleHeight; row++)
+                {
+                    Pixel* srcRow = pSrc + ((srcStartY + row) * arrayWidth + srcStartX);
+
+                    Pixel* dstRow = pixelsBuffer + ((y0 + row) * bufferWidth + x0);
+
+                    Buffer.MemoryCopy(srcRow, dstRow, bytesToCopy, bytesToCopy);
+                }
+            }
+        }
+
+        public void DrawPixelArrayScaled(int x, int y, int srcWidth, int srcHeight, int tgtWidth, int tgtHeight, Pixel[] pixels)
+        {
+            int x0 = x;
+            int y0 = y;
+            int x1 = x + tgtWidth;
+            int y1 = y + tgtHeight;
+
+            if (x0 < 0) x0 = 0;
+            if (y0 < 0) y0 = 0;
+            if (x1 > bufferWidth) x1 = bufferWidth;
+            if (y1 > bufferHeight) y1 = bufferHeight;
+
+            if (x0 >= x1 || y0 >= y1) return;
+
+            float stepX = (float)srcWidth / tgtWidth;
+            float stepY = (float)srcHeight / tgtHeight;
+
+            fixed (Pixel* pSrc = pixels)
+            {
+                for (int screenY = y0; screenY < y1; screenY++)
+                {
+                    int srcY = (int)((screenY - y) * stepY);
+                    if (srcY >= srcHeight) srcY = srcHeight - 1;
+
+                    Pixel* srcRow = pSrc + (srcY * srcWidth);
+                    Pixel* dstRow = pixelsBuffer + (screenY * bufferWidth);
+
+                    for (int screenX = x0; screenX < x1; screenX++)
+                    {
+                        int srcX = (int)((screenX - x) * stepX);
+                        if (srcX >= srcWidth) srcX = srcWidth - 1;
+
+                        dstRow[screenX] = srcRow[srcX];
+                    }
                 }
             }
         }

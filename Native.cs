@@ -189,8 +189,12 @@ namespace ABSoftware.ABPixelEngine
         public static extern uint GetWindowLong(IntPtr hWnd, int nIndex);
         [DllImport(user32)]
         public static extern int GetAsyncKeyState(int vKeys);
+        [DllImport(user32)]
+        public static extern int GetSystemMetrics(int nIndex);
 
         public const int GWL_STYLE = -16;
+        public const int SM_CXSCREEN = 0;
+        public const int SM_CYSCREEN = 1;
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
         public struct WNDCLASSEX
