@@ -32,7 +32,9 @@ namespace ABSoftware.ABPixelEngine.Renderers
         void DrawString(int x, int y, string text, Font font, Pixel color, int scaleX, int scaleY);
         void DrawStringBox(int x, int y, int width, int height, string text, Font font, Pixel color);
         void DrawStringBox(int x, int y, int width, int height, string text, Font font, Pixel color, int scaleX, int scaleY);
-        void DrawSprite(int x, int y, int width, int height, Bitmap sprite);
+        void DrawSprite(int x, int y, int width, int height, Bitmap sprite, bool flipX, bool flipY);
+        void DrawRotatedSprite(int x, int y, int width, int height, Bitmap bmp, float angle, float originX = 0.5f, float originY = 0.5f, bool flipX = false, bool flipY = false);
+        void FastDrawRotatedSprite(int x, int y, int width, int height, Bitmap bmp, float angle, float originX = 0.5f, float originY = 0.5f, bool flipX = false, bool flipY = false);
         void DrawPixelArray(int x, int y, int arrayWidth, int arrayHeight, Pixel[] pixels);
         void DrawPixelArrayScaled(int x, int y, int srcWidth, int srcHeight, int tgtWidth, int tgtHeight, Pixel[] pixels);
     }

@@ -34,6 +34,8 @@ namespace ABSoftware.ABPixelEngine
         private ABDictionary<PixelMode, IRenderer> renderers;
         private IRenderer currentRenderer;
 
+        private ArrayList<IEngineExtension> extensions = new ArrayList<IEngineExtension>();
+
         private bool isCursorLocked = false;
         private bool isCursorVisible = true;
         private bool ignoreNextMouseMove = false;
@@ -53,6 +55,8 @@ namespace ABSoftware.ABPixelEngine
 
         public PixelEngineContext(float fixedUpdateDelta)
         {
+            Input = new Input();
+
             lastUpdateTime = EngineTime.Now;
             fixedDeltaTime = fixedUpdateDelta;
 
@@ -87,6 +91,25 @@ namespace ABSoftware.ABPixelEngine
             renderBuffer = SetupWindow(name, width, height, WndProc, state, pixelWidth, pixelHeight);
         }
 
+        public T RegisterExtension<T>(T extension) where T : IEngineExtension
+        {
+            extensions.Add(extension);
+
+            extension.OnInitialize(this);
+
+            return extension;
+        }
+
+        public T GetExtension<T>() where T : IEngineExtension
+        {
+            for(int i = 0; i < extensions.Size; i++)
+            {
+                if (extensions[i] is T ext) return ext;
+            }
+
+            return default;
+        }
+
         public void Start()
         {
             if (IsActive)
@@ -109,8 +132,6 @@ namespace ABSoftware.ABPixelEngine
 
         void MainLoop()
         {
-            Input = new Input();
-
             CreateContext();
             InitOpenGL(renderBuffer);
 
@@ -122,11 +143,13 @@ namespace ABSoftware.ABPixelEngine
             if (!OnStart())
             {
                 Stop();
+                foreach (var ext in extensions) ext.OnStop();
             }
+            foreach (var ext in extensions) ext.OnStart();
 
-            while(IsActive)
+            while (IsActive)
             {
-                if(IsShuttingDown)
+                if (IsShuttingDown)
                 {
                     IsActive = false;
                     break;
@@ -144,22 +167,29 @@ namespace ABSoftware.ABPixelEngine
 
                 Input.Update();
 
-                while(fixedUpdateAccumulator >= fixedDeltaTime)
+                while (fixedUpdateAccumulator >= fixedDeltaTime)
                 {
                     OnFixedUpdate();
+                    foreach (var ext in extensions) ext.OnFixedUpdate();
                     fixedUpdateAccumulator -= fixedDeltaTime;
                 }
 
                 if (!OnUpdate())
+                {
                     Stop();
+                    foreach (var ext in extensions) ext.OnStop();
+                }
+                foreach (var ext in extensions) ext.OnUpdate();
 
                 renderAccumulator += deltaSeconds;
                 if (renderAccumulator >= TargetFramerate)
                 {
+                    OnRender();
+                    foreach (var ext in extensions) ext.OnRender();
                     UploadRenderBuffer(renderBuffer);
                     renderAccumulator %= TargetFramerate;
                 }
-                
+
             }
 
             DestroyOpenGL();
@@ -167,6 +197,7 @@ namespace ABSoftware.ABPixelEngine
             CloseWindow();
 
             OnStop();
+            foreach (var ext in extensions) ext.OnStop();
         }
 
         public void SetTargetFramerate(float framerate)
@@ -236,7 +267,7 @@ namespace ABSoftware.ABPixelEngine
                     }
                 case Native.WM.MOUSEMOVE:
                     {
-                        if(ignoreNextMouseMove)
+                        if (ignoreNextMouseMove)
                         {
                             ignoreNextMouseMove = false;
                             return IntPtr.Zero;
@@ -246,7 +277,7 @@ namespace ABSoftware.ABPixelEngine
                         short low = (short)(arg & 0xFFFF);
                         short high = (short)(arg >> 16 & 0xFFFF);
 
-                        if(isCursorLocked && IsFocused)
+                        if (isCursorLocked && IsFocused)
                         {
                             int deltaX = low - (Width / 2);
                             int deltaY = high - (Height / 2);
@@ -282,7 +313,7 @@ namespace ABSoftware.ABPixelEngine
                     break;
                 case Native.WM.SYSCOMMAND: //Disable ALT
                     {
-                        if((wParam.ToInt32() & 0xFFF0) == Native.SC_KEYMENU)
+                        if ((wParam.ToInt32() & 0xFFF0) == Native.SC_KEYMENU)
                             return IntPtr.Zero;
                     }
                     break;
@@ -317,7 +348,7 @@ namespace ABSoftware.ABPixelEngine
         {
             currentRenderer.DrawUnsafe(index, color);
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void UpdateRenderState(PixelMode state)
         {
@@ -435,9 +466,19 @@ namespace ABSoftware.ABPixelEngine
             currentRenderer.DrawStringBox(x, y, width, height, text, font, color, scaleX, scaleY);
         }
 
-        public void DrawSprite(int x, int y, int width, int height, Bitmap texture)
+        public void DrawSprite(int x, int y, int width, int height, Bitmap texture, bool flipX = false, bool flipY = false)
         {
-            currentRenderer.DrawSprite(x, y, width, height, texture);
+            currentRenderer.DrawSprite(x, y, width, height, texture, flipX, flipY);
+        }
+
+        public void DrawRotatedSprite(int x, int y, int width, int height, Bitmap bmp, float angle, float originX = 0.5f, float originY = 0.5f, bool flipX = false, bool flipY = false)
+        {
+            currentRenderer.DrawRotatedSprite(x, y, width, height, bmp, angle, originX, originY, flipX, flipY);
+        }
+
+        public void FastDrawRotatedSprite(int x, int y, int width, int height, Bitmap bmp, float angle, float originX = 0.5f, float originY = 0.5f, bool flipX = false, bool flipY = false)
+        {
+            currentRenderer.FastDrawRotatedSprite(x, y, width, height, bmp, angle, originX, originY, flipX, flipY);
         }
 
         public void FillTexturedPolygon(int x0, int y0, float u0, float v0, int x1, int y1, float u1, float v1, int x2, int y2, float u2, float v2, int x3, int y3, float u3, float v3, Bitmap texture)
@@ -481,6 +522,7 @@ namespace ABSoftware.ABPixelEngine
         public virtual void OnFixedUpdate() { }
         /// <returns>Returns a flag if the engine should keep itself active or not</returns>
         public virtual bool OnUpdate() { return true; }
+        public virtual void OnRender() { }
         public virtual void OnStop() { }
 
         public enum PixelMode

@@ -27,5 +27,9 @@ namespace ABSoftware.ABPixelEngine.Structures
         public static int2 operator -(int2 left, int2 right) => new int2(left.x - right.x, left.y - right.y);
         public static int2 operator *(int2 left, int2 right) => new int2(left.x * right.x, left.y * right.y);
         public static int2 operator /(int2 left, int2 right) => new int2(left.x / right.x, left.y / right.y);
+        public static int2 operator +(int2 left, float right) => new int2((int)(left.x + right), (int)(left.y + right));
+        public static int2 operator -(int2 left, float right) => new int2((int)(left.x - right), (int)(left.y - right));
+        public static int2 operator *(int2 left, float right) => new int2((int)(left.x * right), (int)(left.y * right));
+        public static int2 operator /(int2 left, float right) => new int2((int)(left.x / right), (int)(left.y / right));
     }
 }

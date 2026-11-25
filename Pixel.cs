@@ -7,16 +7,16 @@ namespace ABSoftware.ABPixelEngine
     public struct Pixel
     {
         [FieldOffset(0)]
-        public readonly uint Color;
+        public uint Color;
 
         [FieldOffset(2)]
-        public readonly byte R;
+        public byte R;
         [FieldOffset(1)]
-        public readonly byte G;
+        public byte G;
         [FieldOffset(0)]
-        public readonly byte B;
+        public byte B;
         [FieldOffset(3)]
-        public readonly byte A;
+        public byte A;
 
         public Pixel WithR(byte r) => new Pixel(r, G, B, A);
         public Pixel WithG(byte g) => new Pixel(R, g, B, A);

@@ -242,6 +242,7 @@ namespace ABSoftware.ABPixelEngine.Renderers
             if(thickness <= 1)
             {
                 DrawLine(x0, y0, x1, y1, color);
+                return;
             }
 
             int offset = thickness / 2;
@@ -702,13 +703,29 @@ namespace ABSoftware.ABPixelEngine.Renderers
             int xx = 0;
             int yy = radius;
             int d = 3 - 2 * radius;
+            int lastY = -1;
 
             while (xx <= yy)
             {
-                DrawHorizontalLine(x - xx, x + xx, y + yy, color);
+                /*DrawHorizontalLine(x - xx, x + xx, y + yy, color);
                 DrawHorizontalLine(x - xx, x + xx, y - yy, color);
                 DrawHorizontalLine(x - yy, x + yy, y + xx, color);
-                DrawHorizontalLine(x - yy, x + yy, y - xx, color);
+                DrawHorizontalLine(x - yy, x + yy, y - xx, color);*/
+
+                if (yy != lastY && (d >= 0 || xx == yy))
+                {
+                    DrawHorizontalLine(x - xx, x + xx, y + yy, color);
+                    if (yy != 0)
+                        DrawHorizontalLine(x - xx, x + xx, y - yy, color);
+                    lastY = yy;
+                }
+
+                if (xx != yy)
+                {
+                    DrawHorizontalLine(x - yy, x + yy, y + xx, color);
+                    if (xx != 0)
+                        DrawHorizontalLine(x - yy, x + yy, y - xx, color);
+                }
 
                 if (d < 0)
                 {
@@ -744,8 +761,8 @@ namespace ABSoftware.ABPixelEngine.Renderers
 
             while (dx < dy)
             {
-                DrawHorizontalLine(xc - x, xc + x, yc + y, color);
-                DrawHorizontalLine(xc - x, xc + x, yc - y, color);
+                /*DrawHorizontalLine(xc - x, xc + x, yc + y, color);
+                DrawHorizontalLine(xc - x, xc + x, yc - y, color);*/
 
                 x++;
                 dx += fx2;
@@ -755,6 +772,10 @@ namespace ABSoftware.ABPixelEngine.Renderers
                 }
                 else
                 {
+                    DrawHorizontalLine(xc - (x - 1), xc + (x - 1), yc + y, color);
+                    if (y != 0)
+                        DrawHorizontalLine(xc - (x - 1), xc + (x - 1), yc - y, color);
+
                     y--;
                     dy -= fy2;
                     p += ry2 + dx - dy;
@@ -765,8 +786,12 @@ namespace ABSoftware.ABPixelEngine.Renderers
 
             while (y >= 0)
             {
+                /*DrawHorizontalLine(xc - x, xc + x, yc + y, color);
+                DrawHorizontalLine(xc - x, xc + x, yc - y, color);*/
+
                 DrawHorizontalLine(xc - x, xc + x, yc + y, color);
-                DrawHorizontalLine(xc - x, xc + x, yc - y, color);
+                if (y != 0)
+                    DrawHorizontalLine(xc - x, xc + x, yc - y, color);
 
                 y--;
                 dy -= fy2;
@@ -1122,7 +1147,7 @@ namespace ABSoftware.ABPixelEngine.Renderers
                     curXb = x1; curUb = u1; curVb = v1;
                     if (y1 < 0)
                     {
-                        curXa = x0 + invSlopeA * (-y0); curUa = u0 + duSlopeA * (-y0); curVa = v0 + duSlopeA * (-y0);
+                        curXa = x0 + invSlopeA * (-y0); curUa = u0 + duSlopeA * (-y0); curVa = v0 + dvSlopeA * (-y0);
                         curXb += invSlopeB * (-y1); curUb += duSlopeB * (-y1); curVb += dvSlopeB * (-y1);
                     }
 
@@ -1277,7 +1302,7 @@ namespace ABSoftware.ABPixelEngine.Renderers
             }
         }
 
-        public void DrawSprite(int x, int y, int width, int height, Bitmap bmp)
+        public void DrawSprite(int x, int y, int width, int height, Bitmap bmp, bool flipX = false, bool flipY = false)
         {
             if (x >= bufferWidth || y >= bufferHeight || x + width <= 0 || y + height <= 0) return;
 
@@ -1295,10 +1320,30 @@ namespace ABSoftware.ABPixelEngine.Renderers
                 int uStepFP = (texWidth << 16) / width;
                 int vStepFP = (texHeight << 16) / height;
 
-                int startUFP = (xStart - x) * uStepFP;
-                int startVFP = (yStart - y) * vStepFP;
+                int startUFP;
+                if (flipX)
+                {
+                    startUFP = ((texWidth << 16) - 1) - (xStart - x) * uStepFP;
+                    uStepFP = -uStepFP;
+                }
+                else
+                {
+                    startUFP = (xStart - x) * uStepFP;
+                }
+
+                int startVFP;
+                if (flipY)
+                {
+                    startVFP = ((texHeight << 16) - 1) - (yStart - y) * vStepFP;
+                    vStepFP = -vStepFP;
+                }
+                else
+                {
+                    startVFP = (yStart - y) * vStepFP;
+                }
 
                 int currentVFP = startVFP;
+                int rowLength = xEnd - xStart;
 
                 for (int sy = yStart; sy < yEnd; sy++)
                 {
@@ -1312,7 +1357,6 @@ namespace ABSoftware.ABPixelEngine.Renderers
                     Pixel* ptr = pixelsBuffer + (sy * bufferWidth) + xStart;
 
                     int currentUFP = startUFP;
-                    int rowLength = xEnd - xStart;
 
                     for (int sx = 0; sx < rowLength; sx++)
                     {
@@ -1330,6 +1374,70 @@ namespace ABSoftware.ABPixelEngine.Renderers
                     currentVFP += vStepFP;
                 }
             }
+        }
+
+        public void DrawRotatedSprite(int x, int y, int width, int height, Bitmap bmp, float angle, float originX, float originY, bool flipX, bool flipY)
+        {
+            float cx = x + (width * originX);
+            float cy = y + (height * originY);
+
+            float left = -width * originX;
+            float top = -height * originY;
+            float right = width * (1f - originX);
+            float bottom = height * (1f - originY);
+
+            float cos = Mathf.Cosf(angle * Mathf.Deg2Rad);
+            float sin = Mathf.Sinf(angle * Mathf.Deg2Rad);
+
+            float lCos = left * cos; float lSin = left * sin;
+            float rCos = right * cos; float rSin = right * sin;
+            float tCos = top * cos; float tSin = top * sin;
+            float bCos = bottom * cos; float bSin = bottom * sin;
+
+            (int, int) vx0 = ((int)(cx + (lCos - tSin)), (int)(cy + (lSin + tCos)));
+            (int, int) vx1 = ((int)(cx + (rCos - tSin)), (int)(cy + (rSin + tCos)));
+            (int, int) vx2 = ((int)(cx + (rCos - bSin)), (int)(cy + (rSin + bCos)));
+            (int, int) vx3 = ((int)(cx + (lCos - bSin)), (int)(cy + (lSin + bCos)));
+
+            float u0 = flipX ? 1f : 0f; float v0 = flipY ? 1f : 0f;
+            float u1 = flipX ? 0f : 1f; float v1 = flipY ? 1f : 0f;
+            float u2 = flipX ? 0f : 1f; float v2 = flipY ? 0f : 1f;
+            float u3 = flipX ? 1f : 0f; float v3 = flipY ? 0f : 1f;
+
+            FillTexturedTriangle(vx0.Item1, vx0.Item2, u0, v0, vx1.Item1, vx1.Item2, u1, v1, vx2.Item1, vx2.Item2, u2, v2, bmp);
+            FillTexturedTriangle(vx2.Item1, vx2.Item2, u2, v2, vx3.Item1, vx3.Item2, u3, v3, vx0.Item1, vx0.Item2, u0, v0, bmp);
+        }
+
+        public void FastDrawRotatedSprite(int x, int y, int width, int height, Bitmap bmp, float angle, float originX, float originY, bool flipX, bool flipY)
+        {
+            float cx = x + (width * originX);
+            float cy = y + (height * originY);
+
+            float left = -width * originX;
+            float top = -height * originY;
+            float right = width * (1f - originX);
+            float bottom = height * (1f - originY);
+
+            float cos = Mathf.Cosf(angle * Mathf.Deg2Rad);
+            float sin = Mathf.Sinf(angle * Mathf.Deg2Rad);
+
+            float lCos = left * cos; float lSin = left * sin;
+            float rCos = right * cos; float rSin = right * sin;
+            float tCos = top * cos; float tSin = top * sin;
+            float bCos = bottom * cos; float bSin = bottom * sin;
+
+            (int, int) vx0 = ((int)(cx + (lCos - tSin)), (int)(cy + (lSin + tCos)));
+            (int, int) vx1 = ((int)(cx + (rCos - tSin)), (int)(cy + (rSin + tCos)));
+            (int, int) vx2 = ((int)(cx + (rCos - bSin)), (int)(cy + (rSin + bCos)));
+            (int, int) vx3 = ((int)(cx + (lCos - bSin)), (int)(cy + (lSin + bCos)));
+
+            float u0 = flipX ? 1f : 0f; float v0 = flipY ? 1f : 0f;
+            float u1 = flipX ? 0f : 1f; float v1 = flipY ? 1f : 0f;
+            float u2 = flipX ? 0f : 1f; float v2 = flipY ? 0f : 1f;
+            float u3 = flipX ? 1f : 0f; float v3 = flipY ? 0f : 1f;
+
+            FastFillTexturedTriangle(vx0.Item1, vx0.Item2, u0, v0, vx1.Item1, vx1.Item2, u1, v1, vx2.Item1, vx2.Item2, u2, v2, bmp);
+            FastFillTexturedTriangle(vx2.Item1, vx2.Item2, u2, v2, vx3.Item1, vx3.Item2, u3, v3, vx0.Item1, vx0.Item2, u0, v0, bmp);
         }
 
         public void FillTexturedPolygon(int x0, int y0, float u0, float v0, int x1, int y1, float u1, float v1, int x2, int y2, float u2, float v2, int x3, int y3, float u3, float v3, Bitmap texture)
